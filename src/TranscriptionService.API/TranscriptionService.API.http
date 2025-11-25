@@ -1,0 +1,6 @@
+@TranscriptionService.API_HostAddress = http://localhost:5245
+
+GET {{TranscriptionService.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
