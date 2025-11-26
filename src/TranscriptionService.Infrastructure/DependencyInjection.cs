@@ -48,8 +48,8 @@ public static class DependencyInjection
         services.AddSingleton<IMessageQueue, RabbitMqMessageQueue>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
 
-        // Background Services
-        services.AddHostedService<BackgroundJobService>();
+        // Background Services *removed*
+        // services.AddHostedService<BackgroundJobService>();
 
         return services;
     }

@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+option csharp_namespace = "TranscriptionService.Contracts.Grpc";
+
+package transcription;
+
+// Transcription service definition
+service TranscriptionService {
+  // Submit a new transcription job
+  rpc SubmitJob (SubmitJobRequest) returns (SubmitJobResponse);
+  
+  // Get job status
+  rpc GetJobStatus (GetJobStatusRequest) returns (GetJobStatusResponse);
+  
+  // Cancel a job
+  rpc CancelJob (CancelJobRequest) returns (CancelJobResponse);
+  
+  // Stream job updates
+  rpc StreamJobUpdates (StreamJobUpdatesRequest) returns (stream JobUpdateEvent);
+}
+
+// Request to submit a job
+message SubmitJobRequest {
+  bytes audio_data = 1;
+  string file_name = 2;
+  string model = 3;
+  string language = 4;
+  int32 max_retries = 5;
+}
+
+// Response after submitting a job
+message SubmitJobResponse {
+  string job_id = 1;
+  string status = 2;
+  string message = 3;
+  int32 estimated_wait_time_seconds = 4;
+}
+
+// Request to get job status
+message GetJobStatusRequest {
+  string job_id = 1;
+}
+
+// Response with job status
+message GetJobStatusResponse {
+  string job_id = 1;
+  string status = 2;
+  string file_name = 3;
+  string model = 4;
+  string language = 5;
+  string created_at = 6;
+  string started_at = 7;
+  string completed_at = 8;
+  int32 retry_count = 9;
+  int32 max_retries = 10;
+  string error_message = 11;
+  TranscriptionResultMessage result = 12;
+}
+
+// Transcription result
+message TranscriptionResultMessage {
+  string full_text = 1;
+  repeated TranscriptionSegmentMessage segments = 2;
+  string detected_language = 3;
+  double average_confidence = 4;
+  string processing_duration = 5;
+  int32 word_count = 6;
+}
+
+// Transcription segment
+message TranscriptionSegmentMessage {
+  int32 index = 1;
+  string start_time = 2;
+  string end_time = 3;
+  string text = 4;
+  double confidence = 5;
+}
+
+// Request to cancel a job
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+// Response after cancelling a job
+message CancelJobResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Request to stream job updates
+message StreamJobUpdatesRequest {
+  string job_id = 1;
+}
+
+// Job update event
+message JobUpdateEvent {
+  string job_id = 1;
+  string status = 2;
+  string timestamp = 3;
+  string message = 4;
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=Transcription Service API
+After=network.target mysql.service rabbitmq-server.service
+
+[Service]
+Type=notify
+User=www-data
+WorkingDirectory=/opt/transcription-service
+ExecStart=/usr/bin/dotnet /opt/transcription-service/TranscriptionService.API.dll
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=transcription-api
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=multi-user.target

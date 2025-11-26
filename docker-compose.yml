@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: transcription-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-transcription_root_pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-transcription_db}
+      MYSQL_USER: ${MYSQL_USER:-transcription_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-transcription_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-transcription_root_pass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - transcription-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: transcription-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - transcription-network
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: src/TranscriptionService.API/Dockerfile
+    container_name: transcription-api
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Server=mysql;Database=${MYSQL_DATABASE:-transcription_db};User=${MYSQL_USER:-transcription_user};Password=${MYSQL_PASSWORD:-transcription_pass};
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__Username=${RABBITMQ_USER:-guest}
+      - RabbitMq__Password=${RABBITMQ_PASSWORD:-guest}
+      - FileStorage__BasePath=/app/transcription-files
+      - Whisper__ExecutablePath=/usr/local/bin/whisper
+      - Whisper__ModelsPath=/app/models
+    ports:
+      - "5000:5000"
+    volumes:
+      - transcription_files:/app/transcription-files
+      - whisper_models:/app/models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - transcription-network
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: src/TranscriptionService.Worker/Dockerfile
+    container_name: transcription-worker
+    restart: unless-stopped
+    environment:
+      - DOTNET_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ConnectionStrings__DefaultConnection=Server=mysql;Database=${MYSQL_DATABASE:-transcription_db};User=${MYSQL_USER:-transcription_user};Password=${MYSQL_PASSWORD:-transcription_pass};
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__Username=${RABBITMQ_USER:-guest}
+      - RabbitMq__Password=${RABBITMQ_PASSWORD:-guest}
+      - FileStorage__BasePath=/app/transcription-files
+      - Whisper__ExecutablePath=/usr/local/bin/whisper
+      - Whisper__ModelsPath=/app/models
+    volumes:
+      - transcription_files:/app/transcription-files
+      - whisper_models:/app/models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
+    networks:
+      - transcription-network
+
+volumes:
+  mysql_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  transcription_files:
+    driver: local
+  whisper_models:
+    driver: local
+
+networks:
+  transcription-network:
+    driver: bridge

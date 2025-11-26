@@ -7,7 +7,7 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
 {
     public ApplicationDbContext CreateDbContext(string[] args)
     {
-        var optionsBuilder = new DbContextOptions Builder<ApplicationDbContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         
         // Use a default connection string for migrations
         // This will be overridden at runtime by appsettings.json

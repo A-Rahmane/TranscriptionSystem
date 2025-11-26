@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TranscriptionService.Applic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TranscriptionService.Infrastructure.Tests", "tests\TranscriptionService.Infrastructure.Tests\TranscriptionService.Infrastructure.Tests.csproj", "{6D91AB80-D9BF-490C-8EAB-242229B1DB1F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TranscriptionService.E2ETests", "tests\TranscriptionService.E2ETests\TranscriptionService.E2ETests.csproj", "{EA55FDB7-C202-4757-AC22-61AE0F42ADD5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -70,6 +72,10 @@ Global
 		{6D91AB80-D9BF-490C-8EAB-242229B1DB1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D91AB80-D9BF-490C-8EAB-242229B1DB1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6D91AB80-D9BF-490C-8EAB-242229B1DB1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA55FDB7-C202-4757-AC22-61AE0F42ADD5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA55FDB7-C202-4757-AC22-61AE0F42ADD5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA55FDB7-C202-4757-AC22-61AE0F42ADD5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA55FDB7-C202-4757-AC22-61AE0F42ADD5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{603047A8-A6F4-4D56-8A83-A28D59774AD5} = {FFBD4284-A8A2-4460-B9C1-F56DC94C94F5}
@@ -81,5 +87,6 @@ Global
 		{065C2662-543A-4BEE-AC98-97EB2D35F690} = {B55C76FB-58DC-43FD-9858-9A20B78B7C60}
 		{B0591657-D372-4844-8F91-4519A8D8D8AD} = {B55C76FB-58DC-43FD-9858-9A20B78B7C60}
 		{6D91AB80-D9BF-490C-8EAB-242229B1DB1F} = {B55C76FB-58DC-43FD-9858-9A20B78B7C60}
+		{EA55FDB7-C202-4757-AC22-61AE0F42ADD5} = {B55C76FB-58DC-43FD-9858-9A20B78B7C60}
 	EndGlobalSection
 EndGlobal
