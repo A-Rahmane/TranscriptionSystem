@@ -31,7 +31,7 @@ A scalable, production-ready ASP.NET transcription service using Whisper.cpp wit
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/A-Rahmane/TranscriptionSystem.git
 cd TranscriptionSystem
 
 # Start services
