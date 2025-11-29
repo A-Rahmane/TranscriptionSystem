@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddSingleton<IWhisperService, WhisperCppService>();
         services.AddSingleton<IMessageQueue, RabbitMqMessageQueue>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
+        services.AddSingleton<IQueuePositionCounter, InMemoryQueuePositionCounter>();
 
         // Background Services *removed*
         // services.AddHostedService<BackgroundJobService>();

@@ -14,6 +14,7 @@ public class JobStatusDto
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public int QueuePosition { get; set; }
     public int RetryCount { get; set; }
     public int MaxRetries { get; set; }
     public string? ErrorMessage { get; set; }

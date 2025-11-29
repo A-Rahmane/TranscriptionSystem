@@ -33,6 +33,9 @@ public class TranscriptionJobConfiguration : IEntityTypeConfiguration<Transcript
         builder.Property(x => x.CreatedAt)
             .IsRequired();
 
+        builder.Property(x => x.QueuePosition)
+            .IsRequired();
+
         builder.Property(x => x.ErrorMessage)
             .HasMaxLength(500);
 
@@ -123,5 +126,6 @@ public class TranscriptionJobConfiguration : IEntityTypeConfiguration<Transcript
         builder.HasIndex(x => x.Status);
         builder.HasIndex(x => x.CreatedAt);
         builder.HasIndex(x => new { x.Status, x.CreatedAt });
+        builder.HasIndex(x => x.QueuePosition);
     }
 }
