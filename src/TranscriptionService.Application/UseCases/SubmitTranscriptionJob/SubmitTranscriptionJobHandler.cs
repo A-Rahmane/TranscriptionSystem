@@ -14,16 +14,19 @@ public class SubmitTranscriptionJobHandler : IRequestHandler<SubmitTranscription
     private readonly IFileStorage _fileStorage;
     private readonly IMessageQueue _messageQueue;
     private readonly ILogger<SubmitTranscriptionJobHandler> _logger;
+    private readonly IQueuePositionCounter _queuePositionCounter;
 
     public SubmitTranscriptionJobHandler(
         ITranscriptionJobRepository jobRepository,
         IFileStorage fileStorage,
         IMessageQueue messageQueue,
+        IQueuePositionCounter queuePositionCounter,
         ILogger<SubmitTranscriptionJobHandler> logger)
     {
         _jobRepository = jobRepository;
         _fileStorage = fileStorage;
         _messageQueue = messageQueue;
+        _queuePositionCounter = queuePositionCounter;
         _logger = logger;
     }
 
@@ -41,6 +44,9 @@ public class SubmitTranscriptionJobHandler : IRequestHandler<SubmitTranscription
 
         try
         {
+            // Get next queue position
+            var queuePosition = await _queuePositionCounter.GetNextPositionAsync(cancellationToken);
+
             // Save the audio file to storage
             var filePath = await _fileStorage.SaveAudioFileAsync(
                 request.AudioFileStream,
@@ -61,37 +67,35 @@ public class SubmitTranscriptionJobHandler : IRequestHandler<SubmitTranscription
                 audioFile,
                 request.Model,
                 request.Language,
-                request.MaxRetries);
-
-            // Ensure the job has the same ID as we used for file storage
-            // (In a real scenario, you might want to refactor this)
-            var jobWithCorrectId = TranscriptionJob.Create(
-                audioFile,
-                request.Model,
-                request.Language,
-                request.MaxRetries);
+                request.MaxRetries,
+                queuePosition);
 
             // Save to repository
-            await _jobRepository.AddAsync(jobWithCorrectId, cancellationToken);
+            await _jobRepository.AddAsync(job, cancellationToken);
 
-            _logger.LogInformation("Transcription job created with ID: {JobId}", jobWithCorrectId.Id);
+            _logger.LogInformation(
+                "Transcription job created with ID: {JobId}, Queue Position: {QueuePosition}",
+                job.Id,
+                queuePosition);
 
             // Enqueue for processing
-            await _messageQueue.EnqueueJobAsync(jobWithCorrectId.Id, cancellationToken);
+            await _messageQueue.EnqueueJobAsync(job.Id, cancellationToken);
 
-            _logger.LogInformation("Job {JobId} enqueued for processing", jobWithCorrectId.Id);
+            _logger.LogInformation("Job {JobId} enqueued for processing", job.Id);
 
-            // Get queue length for estimated wait time
+            // Get queue length and last processed position for estimated wait time
             var queueLength = await _messageQueue.GetQueueLengthAsync(cancellationToken);
-            var estimatedWaitTime = CalculateEstimatedWaitTime(queueLength, request.FileSizeBytes);
+            var lastProcessed = await _queuePositionCounter.GetLastProcessedPositionAsync(cancellationToken);
+            var jobsAhead = queuePosition - lastProcessed - 1; // Jobs ahead in queue
+            var estimatedWaitTime = CalculateEstimatedWaitTime(jobsAhead, request.FileSizeBytes);
 
             return new SubmitJobResponseDto
             {
-                JobId = jobWithCorrectId.Id,
-                Status = jobWithCorrectId.Status.ToString(),
-                CreatedAt = jobWithCorrectId.CreatedAt,
+                JobId = job.Id,
+                Status = job.Status.ToString(),
+                CreatedAt = job.CreatedAt,
                 EstimatedWaitTimeSeconds = estimatedWaitTime,
-                Message = "Transcription job submitted successfully and queued for processing."
+                Message = $"Transcription job submitted successfully. Queue position: {queuePosition}. Jobs ahead: {jobsAhead}"
             };
         }
         catch (Exception ex)
@@ -123,4 +127,12 @@ public class SubmitTranscriptionJobHandler : IRequestHandler<SubmitTranscription
 
         return Math.Max(queueWaitTime + estimatedProcessingTime, 10); // Minimum 10 seconds
     }
+
+    /*
+    ** Get queue length and last processed position for estimated wait time
+    ** var queueLength = await _messageQueue.GetQueueLengthAsync(cancellationToken);
+    ** var lastProcessed = await _queuePositionCounter.GetLastProcessedPositionAsync(cancellationToken);
+    ** var jobsAhead = queuePosition - lastProcessed - 1; // Jobs ahead in queue
+    ** var estimatedWaitTime = CalculateEstimatedWaitTime(jobsAhead, request.FileSizeBytes);
+    */
 }

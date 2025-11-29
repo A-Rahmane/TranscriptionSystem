@@ -19,6 +19,7 @@ public class TranscriptionJob
     public DateTime CreatedAt { get; private set; }
     public DateTime? StartedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
+    public int QueuePosition { get; private set; }
     public int RetryCount { get; private set; }
     public int MaxRetries { get; private set; }
     public TranscriptionResult? Result { get; private set; }
@@ -35,7 +36,8 @@ public class TranscriptionJob
         AudioFile audioFile,
         WhisperModel model,
         string? language = null,
-        int maxRetries = DefaultMaxRetries)
+        int maxRetries = DefaultMaxRetries,
+        int queuePosition = 0)
     {
         Id = Guid.NewGuid();
         AudioFile = audioFile;
@@ -45,13 +47,15 @@ public class TranscriptionJob
         CreatedAt = DateTime.UtcNow;
         RetryCount = 0;
         MaxRetries = maxRetries;
+        QueuePosition = queuePosition;
     }
 
     public static TranscriptionJob Create(
         AudioFile audioFile,
         WhisperModel model,
         string? language = null,
-        int maxRetries = DefaultMaxRetries)
+        int maxRetries = DefaultMaxRetries,
+        int queuePosition = 0)
     {
         if (audioFile == null)
             throw new ArgumentNullException(nameof(audioFile));
@@ -59,7 +63,7 @@ public class TranscriptionJob
         if (maxRetries < 0)
             throw new ArgumentException("Max retries cannot be negative.", nameof(maxRetries));
 
-        return new TranscriptionJob(audioFile, model, language, maxRetries);
+        return new TranscriptionJob(audioFile, model, language, maxRetries, queuePosition);
     }
 
     public void MarkAsProcessing()

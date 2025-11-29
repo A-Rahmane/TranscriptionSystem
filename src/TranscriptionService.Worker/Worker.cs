@@ -20,6 +20,10 @@ public class Worker : BackgroundService
     private readonly TimeSpan _errorRetryDelay = TimeSpan.FromSeconds(30);
     private int _consecutiveErrors = 0;
     private const int MaxConsecutiveErrors = 10;
+    private const int MaxConcurrentJobs = 2;
+    private int _activeJobCount = 0;
+    private readonly SemaphoreSlim _capacitySemaphore = new(MaxConcurrentJobs);
+    private readonly object _lockObject = new();
 
     public Worker(
         IServiceProvider serviceProvider,
@@ -34,6 +38,7 @@ public class Worker : BackgroundService
         _logger.LogInformation("==============================================");
         _logger.LogInformation("Transcription Worker Service Started");
         _logger.LogInformation("==============================================");
+        _logger.LogInformation("Max concurrent jobs: {MaxConcurrent}", MaxConcurrentJobs);
         _logger.LogInformation("Worker will poll for jobs every {PollInterval} seconds", _pollInterval.TotalSeconds);
 
         // Wait a bit for services to initialize
@@ -41,18 +46,58 @@ public class Worker : BackgroundService
 
         await PerformStartupChecksAsync(stoppingToken);
 
+        // Start multiple processing tasks up to max capacity
+        var processingTasks = new List<Task>();
+        for (int i = 0; i < MaxConcurrentJobs; i++)
+        {
+            processingTasks.Add(ProcessJobsLoopAsync(i + 1, stoppingToken));
+        }
+
+        await Task.WhenAll(processingTasks);
+
+        _logger.LogInformation("==============================================");
+        _logger.LogInformation("Transcription Worker Service Stopped");
+        _logger.LogInformation("==============================================");
+    }
+
+    private async Task ProcessJobsLoopAsync(int workerSlot, CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Worker slot {SlotNumber} started", workerSlot);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await ProcessNextJobAsync(stoppingToken);
+                await _capacitySemaphore.WaitAsync(stoppingToken);
                 
-                // Reset error counter on successful iteration
-                _consecutiveErrors = 0;
+                try
+                {
+                    lock (_lockObject)
+                    {
+                        _activeJobCount++;
+                    }
+
+                    _logger.LogDebug(
+                        "Slot {SlotNumber}: Acquired capacity. Active jobs: {ActiveCount}/{MaxCount}",
+                        workerSlot, _activeJobCount, MaxConcurrentJobs);
+
+                    await ProcessNextJobAsync(workerSlot, stoppingToken);
+                    
+                    // Reset error counter on successful iteration
+                    _consecutiveErrors = 0;
+                }
+                finally
+                {
+                    lock (_lockObject)
+                    {
+                        _activeJobCount--;
+                    }
+                    _capacitySemaphore.Release();
+                }
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Worker cancellation requested");
+                _logger.LogInformation("Worker slot {SlotNumber} cancellation requested", workerSlot);
                 break;
             }
             catch (Exception ex)
@@ -61,29 +106,26 @@ public class Worker : BackgroundService
                 
                 _logger.LogError(
                     ex,
-                    "Error in worker service (consecutive errors: {ErrorCount})",
-                    _consecutiveErrors);
+                    "Error in worker slot {SlotNumber} (consecutive errors: {ErrorCount})",
+                    workerSlot, _consecutiveErrors);
 
                 if (_consecutiveErrors >= MaxConsecutiveErrors)
                 {
                     _logger.LogCritical(
-                        "Worker has encountered {ErrorCount} consecutive errors. Stopping service.",
-                        _consecutiveErrors);
+                        "Worker slot {SlotNumber} has encountered {ErrorCount} consecutive errors. Stopping slot.",
+                        workerSlot, _consecutiveErrors);
                     break;
                 }
 
                 // Wait longer after errors
                 await Task.Delay(_errorRetryDelay, stoppingToken);
-                continue;
             }
 
-            // Normal polling interval
-            await Task.Delay(_pollInterval, stoppingToken);
+            // Small delay between attempts
+            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
 
-        _logger.LogInformation("==============================================");
-        _logger.LogInformation("Transcription Worker Service Stopped");
-        _logger.LogInformation("==============================================");
+        _logger.LogInformation("Worker slot {SlotNumber} stopped", workerSlot);
     }
 
     private async Task PerformStartupChecksAsync(CancellationToken cancellationToken)
@@ -97,7 +139,7 @@ public class Worker : BackgroundService
             // Check database connection
             var jobRepository = scope.ServiceProvider.GetRequiredService<ITranscriptionJobRepository>();
             var queuedCount = await jobRepository.GetCountByStatusAsync(JobStatus.Queued, cancellationToken);
-            _logger.LogInformation("✓ Database connection OK - {Count} jobs in queue", queuedCount);
+            _logger.LogInformation("✓ Database connection OK - {Count} jobs in Queued status", queuedCount);
         }
         catch (Exception ex)
         {
@@ -150,7 +192,7 @@ public class Worker : BackgroundService
         _logger.LogInformation("Startup checks completed");
     }
 
-    private async Task ProcessNextJobAsync(CancellationToken cancellationToken)
+    private async Task ProcessNextJobAsync(int workerSlot, CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
         
@@ -164,12 +206,12 @@ public class Worker : BackgroundService
         if (!jobId.HasValue)
         {
             // No jobs in queue
-            _logger.LogDebug("No jobs available in queue");
+            _logger.LogDebug("Slot {SlotNumber}: No jobs available in queue", workerSlot);
             return;
         }
 
         _logger.LogInformation("╔════════════════════════════════════════════════╗");
-        _logger.LogInformation("║ Processing Job: {JobId}", jobId.Value);
+        _logger.LogInformation("║ Slot {SlotNumber}: Processing Job: {JobId}", workerSlot, jobId.Value);
         _logger.LogInformation("╚════════════════════════════════════════════════╝");
 
         var startTime = DateTime.UtcNow;
@@ -181,6 +223,7 @@ public class Worker : BackgroundService
             if (job != null)
             {
                 _logger.LogInformation("Job Details:");
+                _logger.LogInformation("  - Queue Position: {QueuePosition}", job.QueuePosition);
                 _logger.LogInformation("  - File: {FileName}", job.AudioFile.FileName);
                 _logger.LogInformation("  - Size: {FileSize}", job.AudioFile.GetFormattedSize());
                 _logger.LogInformation("  - Model: {Model}", job.Model);
@@ -197,14 +240,14 @@ public class Worker : BackgroundService
             if (success)
             {
                 _logger.LogInformation("════════════════════════════════════════════════");
-                _logger.LogInformation("✓ Job {JobId} completed successfully", jobId.Value);
+                _logger.LogInformation("✓ Slot {SlotNumber}: Job {JobId} completed successfully", workerSlot, jobId.Value);
                 _logger.LogInformation("  Processing time: {ProcessingTime}", FormatTimeSpan(processingTime));
                 _logger.LogInformation("════════════════════════════════════════════════");
             }
             else
             {
                 _logger.LogWarning("════════════════════════════════════════════════");
-                _logger.LogWarning("✗ Job {JobId} processing failed", jobId.Value);
+                _logger.LogWarning("✗ Slot {SlotNumber}: Job {JobId} processing failed", workerSlot, jobId.Value);
                 _logger.LogWarning("  Processing time: {ProcessingTime}", FormatTimeSpan(processingTime));
                 _logger.LogWarning("════════════════════════════════════════════════");
 
@@ -224,10 +267,11 @@ public class Worker : BackgroundService
             _logger.LogError(
                 ex,
                 "════════════════════════════════════════════════\n" +
-                "✗ Critical error processing job {JobId}\n" +
+                "✗ Slot {SlotNumber}: Critical error processing job {JobId}\n" +
                 "  Error: {ErrorMessage}\n" +
                 "  Processing time: {ProcessingTime}\n" +
                 "════════════════════════════════════════════════",
+                workerSlot,
                 jobId.Value,
                 ex.Message,
                 FormatTimeSpan(processingTime));
